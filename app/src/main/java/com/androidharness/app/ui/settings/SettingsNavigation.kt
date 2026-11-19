@@ -185,6 +185,12 @@ internal enum class SettingsPage(
         R.string.settings_group_integrations,
         "telegram bot remote control pairing notifications gateway",
     ),
+    DISCORD(
+        R.string.settings_page_discord_title,
+        R.string.settings_page_discord_desc,
+        R.string.settings_group_integrations,
+        "discord bot python command prefix ai chat token owner messages",
+    ),
     WORKSPACE(
         R.string.settings_page_workspace_title,
         R.string.settings_page_workspace_desc,
@@ -298,7 +304,7 @@ internal val settingsHomePages = listOf(
     SettingsPage.LEARN,
     SettingsPage.MODELS, SettingsPage.CONNECTED_ACCOUNTS, SettingsPage.LOCAL_MODELS, SettingsPage.NINE_ROUTER,
     SettingsPage.CHAT_OPTIONS, SettingsPage.CODING, SettingsPage.MEMORY, SettingsPage.VOICE, SettingsPage.LIVE_MODE,
-    SettingsPage.SEARCH, SettingsPage.MCP, SettingsPage.GITHUB, SettingsPage.TELEGRAM,
+    SettingsPage.SEARCH, SettingsPage.MCP, SettingsPage.GITHUB, SettingsPage.TELEGRAM, SettingsPage.DISCORD,
     SettingsPage.APPEARANCE, SettingsPage.LANGUAGE, SettingsPage.RUMBLE,
     SettingsPage.PRIVACY, SettingsPage.BACKGROUND, SettingsPage.STORAGE,
     SettingsPage.BACKUP, SettingsPage.SYNC, SettingsPage.FTP_SERVER, SettingsPage.USAGE,
@@ -433,6 +439,7 @@ internal fun settingsDeepLink(target: String): SettingsPage? = when (target) {
     "voice" -> SettingsPage.VOICE
     "live", "live-mode" -> SettingsPage.LIVE_MODE
     "telegram" -> SettingsPage.TELEGRAM
+    "discord" -> SettingsPage.DISCORD
     "plugins", "plugin-manager" -> SettingsPage.PLUGINS
     "configuration", "config" -> SettingsPage.CONFIGURATION
     "agent" -> SettingsPage.AGENT

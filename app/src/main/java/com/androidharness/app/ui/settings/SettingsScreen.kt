@@ -540,6 +540,7 @@ private fun SettingsScreenContent(
                         SettingsPage.MCP -> McpSection(container, onOpenPlugins = { openPage(SettingsPage.PLUGINS) },
                             onOpenConfiguration = { openPage(SettingsPage.CONFIGURATION) })
                         SettingsPage.TELEGRAM -> TelegramSection(container)
+                        SettingsPage.DISCORD -> DiscordSettingsSection(container) { openPage(SettingsPage.BACKGROUND) }
                         SettingsPage.WORKSPACE -> {
                             RememberedPermissionsSection(container)
                             WorkspaceSection(
@@ -3010,6 +3011,12 @@ private fun UpdatesCard(container: AppContainer) {
 private const val AUTHOR_URL = "https://github.com/Sanuu7"
 private const val REPO_URL = "https://github.com/Sanuu7/AndroidHarness"
 private const val LICENSE_URL = "https://github.com/Sanuu7/AndroidHarness/blob/main/LICENSE"
+private const val REMAKE_CREATOR_NAME = "SonicZ"
+private const val REMAKE_CREATOR_URL = "https://github.com/SonicZ-z"
+private const val REMAKE_REPO_URL = "https://github.com/SonicZ-z/android-harness-remake"
+// Replace these values when the friend confirms the exact name and public profile URL.
+private const val FRIEND_CREDIT_NAME = "Friend collaborator"
+private const val FRIEND_CREDIT_URL = ""
 
 /** Installed version, shared by the About page and the update card. */
 private fun appVersionLabel(context: Context): String = runCatching {
@@ -3073,6 +3080,41 @@ private fun AboutSection(container: AppContainer) {
                     color = scheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
                 )
+            }
+        }
+    }
+
+    SettingsHeader("Remake contributors")
+    SettingsPanel(Modifier.fillMaxWidth()) {
+        SettingsRow(
+            leading = { GitHubMark() },
+            title = REMAKE_CREATOR_NAME,
+            subtitle = "Remake creator · github.com/SonicZ-z",
+            onClick = { open(REMAKE_CREATOR_URL) },
+            divider = true,
+            trailing = { ExternalLinkIcon() },
+        )
+        SettingsRow(
+            leading = { Icon(Icons.Rounded.Code, contentDescription = null, tint = scheme.onSurfaceVariant, modifier = Modifier.size(22.dp)) },
+            title = "Android Harness Remake source",
+            subtitle = "github.com/SonicZ-z/android-harness-remake",
+            onClick = { open(REMAKE_REPO_URL) },
+            divider = FRIEND_CREDIT_URL.isNotBlank(),
+            trailing = { ExternalLinkIcon() },
+        )
+        if (FRIEND_CREDIT_URL.isNotBlank()) {
+            SettingsRow(
+                leading = { GitHubMark() },
+                title = FRIEND_CREDIT_NAME,
+                subtitle = FRIEND_CREDIT_URL.removePrefix("https://").removePrefix("http://"),
+                onClick = { open(FRIEND_CREDIT_URL) },
+                trailing = { ExternalLinkIcon() },
+            )
+        } else {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(FRIEND_CREDIT_NAME, style = MaterialTheme.typography.bodyMedium)
+                Text("Friend profile link pending confirmation. The name and URL are editable in the project source.",
+                    style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
             }
         }
     }

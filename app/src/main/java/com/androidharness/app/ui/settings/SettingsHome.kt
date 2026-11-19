@@ -301,6 +301,7 @@ internal fun settingsIcon(page: SettingsPage): ImageVector = when (page) {
     SettingsPage.SEARCH -> Icons.Rounded.TravelExplore
     SettingsPage.MCP -> Icons.Rounded.Extension
     SettingsPage.TELEGRAM -> Icons.AutoMirrored.Rounded.Send
+    SettingsPage.DISCORD -> Icons.Rounded.SmartToy
     SettingsPage.WORKSPACE -> Icons.Rounded.Folder
     SettingsPage.BACKGROUND -> Icons.Rounded.Notifications
     SettingsPage.STORAGE -> Icons.Rounded.Storage

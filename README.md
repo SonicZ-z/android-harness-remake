@@ -8,13 +8,15 @@ This repository is not affiliated with or endorsed by Sanuu7. AndroidHarness is 
 
 This app retains the upstream AndroidHarness source, including its Kotlin and Jetpack Compose interface, coding agent, workspace tools, provider support, and existing Telegram remote-control feature. The installed application ID is `com.androidharness.remake` and the displayed app name is **Android Harness Remake**.
 
-The remake adds a limited Discord bot option under **Settings > Telegram > More bot platforms**:
+The remake adds a limited Discord bot page under **Settings > Discord bot**:
 
 - Enter a Discord application bot token and one numeric owner user ID. The app validates the token with Discord before saving it in Android Keystore-backed encrypted preferences.
 - Only the configured owner is accepted. In a server, the owner must mention the bot. Replies from server channels are delivered to the owner's private Discord chat.
-- AI conversations use the app's selected model and Plan mode. Discord messages cannot trigger file edits or arbitrary shell commands through the bot.
-- Custom commands are named Python scripts created locally in the app. The bot can invoke only saved names, for example `!run weather [input]`. Chat text is passed on standard input and is never concatenated into a shell command. Scripts run in the app's managed Linux environment with a 15 second time limit and output cap, without root or Shizuku privileges. Scripts are user-authored code and can access app-private files available to the app user, so review every script before saving it.
+- AI conversations use the app's selected model and Plan mode. A setting can disable AI replies. Discord messages cannot trigger file edits or arbitrary shell commands through the bot.
+- Choose a command prefix from `!`, `?`, `~`, or `.` and independently disable AI replies or custom Python commands.
+- Custom commands are named Python scripts created locally in the app. The bot can invoke only saved names, for example `!run weather [input]` or `!weather [input]`. Chat text is passed on standard input and is never concatenated into a shell command. Scripts run in the app's managed Linux environment with a 15 second time limit and output cap, without root or Shizuku privileges. Scripts are user-authored code and can access files and services available to the app's Linux user, so review every script before saving it. Saved scripts can be edited or removed in settings.
 - Enable **Message Content Intent** in the Discord Developer Portal and grant the bot permission to view and send messages. A running bot is shown by a foreground notification with Pause and Stop actions.
+- If app background running is disabled, Discord is temporarily suspended while the app is hidden and resumes when the app returns. Enable **Settings > Background > Run in background** to keep it online, subject to Android battery restrictions.
 
 The original Telegram feature remains the upstream remote-control implementation. Discord in this release does not duplicate every Telegram project, model, approval, button, or saved-work control.
 
@@ -52,7 +54,17 @@ ANDROID_HOME="$HOME/Android/Sdk" HARNESS_DISABLE_NDK=1 ./gradlew :app:testDebugU
 
 See [CHANGELOG.md](CHANGELOG.md) for the full remake release notes. The original upstream history is preserved in [UPSTREAM_CHANGELOG.md](UPSTREAM_CHANGELOG.md).
 
-### 1.0.0
+### 1.0.1 (prepared, not released)
+
+- Fixed app backgrounding so Android's UI-hidden callback no longer unloads the native local model as if it were memory pressure.
+- Kept the Discord bot's enabled preference during temporary background suspension so it can resume when the app becomes visible again.
+- Added lifecycle cleanup error isolation and regression tests for the memory-trim policy.
+- Moved Discord controls to a dedicated settings page and added a custom command prefix, AI/Python toggles, and saved-command editing.
+- Added an in-app Discord setup walkthrough with owner, permission, background, and Python safety guidance.
+- Added remake creator and friend collaborator credits, with the friend's profile left as an editable placeholder until confirmed.
+- No APK release has been published for this version.
+
+### 1.0.0 initial source release
 
 - Created a distinct Android app project and application ID from the upstream AndroidHarness source.
 - Preserved the upstream MIT license and added direct credit to Sanuu7 and the source repository.
@@ -65,6 +77,8 @@ See [CHANGELOG.md](CHANGELOG.md) for the full remake release notes. The original
 
 ## Credits and notices
 
+- **SonicZ** created this remake. The About page links to the [SonicZ GitHub profile](https://github.com/SonicZ-z) and the [remake source repository](https://github.com/SonicZ-z/android-harness-remake).
+- **Friend collaborator:** profile details are pending confirmation. The About-page credit name and profile URL are marked as editable placeholders in the source.
 - **Sanuu7** created [AndroidHarness](https://github.com/Sanuu7/AndroidHarness), the MIT-licensed source project used as the base for this remake. The upstream copyright and permission notice remain in `LICENSE`.
 - Upstream acknowledgements for the open-source libraries and projects used by AndroidHarness are preserved in the copied source tree. Third-party code and assets retain their original notices.
 - Discord is a service of Discord Inc. This project is an independent client integration and is not endorsed by Discord.

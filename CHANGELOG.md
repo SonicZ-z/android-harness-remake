@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.0.1 - 2026-11-19 (prepared, not released)
+
+### Fixed
+
+- Do not release the cached native local model when Android reports that the app UI became hidden. Reserve teardown for actual memory-pressure callbacks.
+- Catch and log ordinary background lifecycle cleanup errors so a service cleanup failure cannot terminate the runtime-policy observer.
+- Temporarily stop the Discord service when background execution is disabled without clearing the user's enabled preference; restore it when the app returns to the foreground.
+- Add regression tests covering UI-hidden, low-memory, critical-memory, and ordinary trim levels.
+
+### Added
+
+- Dedicated Discord bot settings page, independent from the upstream Telegram page.
+- In-app Discord setup walkthrough covering owner access, bot permissions, background behavior, and Python command safety.
+- Configurable command prefix and independent AI-reply and custom-Python-command switches.
+- Edit and remove actions for saved Python commands.
+- About-page links for remake creator SonicZ and the remake source, plus an editable friend-profile placeholder.
+
+### Changed
+
+- Bump the prepared app version to 1.0.1 with version code 2. No APK release is published.
+- Keep custom Python execution restricted to locally saved command names, with time and output limits. Scripts execute as the app's Linux user and may access resources available to that user.
+
 ## 1.0.0 - 2026-11-19
 
 ### Added

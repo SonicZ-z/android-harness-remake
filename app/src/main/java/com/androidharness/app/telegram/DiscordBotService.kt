@@ -97,7 +97,7 @@ internal class DiscordBotService : Service() {
 
     private fun notification(text: String): Notification {
         val open = Intent(this, MainActivity::class.java)
-            .putExtra("settings_page", "telegram")
+            .putExtra("settings_page", "discord")
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
         val builder = Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_launcher_monochrome)

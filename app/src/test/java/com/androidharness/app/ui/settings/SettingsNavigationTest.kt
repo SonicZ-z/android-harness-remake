@@ -73,7 +73,7 @@ class SettingsNavigationTest {
             displayGroups.getValue(R.string.settings_group_ai_models).map { it.page })
         assertEquals(listOf(SettingsPage.CHAT_OPTIONS, SettingsPage.CODING, SettingsPage.MEMORY, SettingsPage.VOICE, SettingsPage.LIVE_MODE),
             displayGroups.getValue(R.string.settings_group_your_assistant).map { it.page })
-        assertEquals(listOf(SettingsPage.SEARCH, SettingsPage.MCP, SettingsPage.GITHUB, SettingsPage.TELEGRAM),
+        assertEquals(listOf(SettingsPage.SEARCH, SettingsPage.MCP, SettingsPage.GITHUB, SettingsPage.TELEGRAM, SettingsPage.DISCORD),
             displayGroups.getValue(R.string.settings_group_integrations).map { it.page })
         assertEquals(listOf(SettingsPage.APPEARANCE, SettingsPage.LANGUAGE, SettingsPage.RUMBLE),
             displayGroups.getValue(R.string.settings_group_look_feel).map { it.page })
@@ -84,6 +84,7 @@ class SettingsNavigationTest {
         assertEquals(settingsHomePages, displayGroups.values.flatten().map { it.page })
         assertEquals(SettingsPage.LANGUAGE, settingsDeepLink("language"))
         assertEquals(SettingsPage.GITHUB, settingsDeepLink("github"))
+        assertEquals(SettingsPage.DISCORD, settingsDeepLink("discord"))
         assertEquals(listOf(SettingsPage.GITHUB), matchingSettingsPages("commit push", settingsTestStrings()))
     }
 

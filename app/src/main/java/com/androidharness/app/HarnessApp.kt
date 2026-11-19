@@ -2,6 +2,7 @@ package com.androidharness.app
 
 import android.app.Application
 import android.content.Context
+import android.util.Log
 import android.webkit.WebView
 import androidx.compose.foundation.ComposeFoundationFlags
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -21,6 +22,7 @@ import com.androidharness.app.llm.effectiveApiKey
 import com.androidharness.app.tools.ToolRegistry
 import com.androidharness.app.workspace.WorkspaceManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -59,13 +61,34 @@ class HarnessApp : Application() {
     }
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        if (::container.isInitialized && level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
-            memoryScope.launch { container.localModels.releaseCachedModel() }
-        }
+        if (AppMemoryPolicy.shouldReleaseCachedModel(level)) releaseCachedModelSafely()
     }
     override fun onLowMemory() {
         super.onLowMemory()
-        if (::container.isInitialized) memoryScope.launch { container.localModels.releaseCachedModel() }
+        releaseCachedModelSafely()
+    }
+
+    private fun releaseCachedModelSafely() {
+        if (!::container.isInitialized) return
+        memoryScope.launch {
+            try {
+                container.localModels.releaseCachedModel()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w("HarnessApp", "Could not release the cached local model after memory pressure", e)
+            }
+        }
+    }
+}
+
+private suspend fun runLifecycleStepSafely(label: String, action: suspend () -> Unit) {
+    try {
+        action()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w("HarnessApp", label, e)
     }
 }
 
@@ -450,15 +473,18 @@ class AppContainer(val appContext: Context) {
 
     init {
         runtimePolicy.start(onBackgroundDisabled = {
-            runManager.stopIfBackgroundDisabled()
+            runLifecycleStepSafely("Could not stop active runs during background suspension") {
+                runManager.stopIfBackgroundDisabled()
+            }
             if (!runtimePolicy.canRun()) {
                 // One unavailable device backend must not disable the policy observer.
-                runCatching { telegram.suspendForBackground() }
-                runCatching { discordBots.suspendForBackground() }
-                runCatching { ftpShare.stop() }
-                runCatching { terminal.stopTerminal() }
-                runCatching { backgroundProcesses.killAll() }
-                AgentService.stop(appContext)
+                runLifecycleStepSafely("Could not suspend Telegram during background transition") { telegram.suspendForBackground() }
+                runLifecycleStepSafely("Could not suspend Discord during background transition") { discordBots.suspendForBackground() }
+                runLifecycleStepSafely("Could not stop FTP sharing during background transition") { ftpShare.stop() }
+                runLifecycleStepSafely("Could not stop the terminal during background transition") { terminal.stopTerminal() }
+                runLifecycleStepSafely("Could not stop background processes during background transition") { backgroundProcesses.killAll() }
+                runCatching { AgentService.stop(appContext) }
+                    .onFailure { Log.w("HarnessApp", "Could not stop the agent service during background transition", it) }
             }
         }, onAvailable = { telegram.restoreIfEnabled(); discordBots.restoreIfEnabled() })
         // models.dev thinking-capability catalog: serve the cached copy

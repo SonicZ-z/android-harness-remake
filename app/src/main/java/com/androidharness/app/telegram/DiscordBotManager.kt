@@ -50,6 +50,9 @@ internal data class DiscordBotConfig(
     val projectId: String? = null,
     val sessionId: String? = null,
     val customCommands: List<String> = emptyList(),
+    val commandPrefix: String = "!",
+    val aiRepliesEnabled: Boolean = true,
+    val customCommandsEnabled: Boolean = true,
 ) {
     override fun toString() = "DiscordBotConfig(botId=$botId, ownerId=$ownerId, enabled=$enabled, token=[redacted])"
 }
@@ -60,6 +63,9 @@ internal data class DiscordBotSetupState(
     val ownerId: String? = null,
     val enabled: Boolean = false,
     val customCommands: List<String> = emptyList(),
+    val commandPrefix: String = "!",
+    val aiRepliesEnabled: Boolean = true,
+    val customCommandsEnabled: Boolean = true,
 )
 
 internal data class DiscordBotRuntimeState(
@@ -73,6 +79,7 @@ internal class DiscordBotManager(private val c: AppContainer) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val messageLock = Mutex()
+    private val lifecycleMutex = Mutex()
     private val dispatchJobsLock = Any()
     private val dispatchJobs = mutableSetOf<Job>()
     private val configurationGeneration = AtomicLong(0)
@@ -100,6 +107,9 @@ internal class DiscordBotManager(private val c: AppContainer) {
         ownerId = ownerId,
         enabled = enabled,
         customCommands = customCommands,
+        commandPrefix = commandPrefix,
+        aiRepliesEnabled = aiRepliesEnabled,
+        customCommandsEnabled = customCommandsEnabled,
     )
 
     @Synchronized
@@ -109,7 +119,11 @@ internal class DiscordBotManager(private val c: AppContainer) {
     private fun save(next: DiscordBotConfig) {
         c.keys.putLocalSecret(STORE_SLOT, json.encodeToString(DiscordBotConfig.serializer(), next))
         val previous = config
-        if (previous.token != next.token || previous.botId != next.botId || previous.ownerId != next.ownerId || previous.enabled != next.enabled) {
+        if (previous.token != next.token || previous.botId != next.botId || previous.ownerId != next.ownerId ||
+            previous.enabled != next.enabled || previous.commandPrefix != next.commandPrefix ||
+            previous.aiRepliesEnabled != next.aiRepliesEnabled || previous.customCommandsEnabled != next.customCommandsEnabled ||
+            previous.customCommands != next.customCommands
+        ) {
             configurationGeneration.incrementAndGet()
         }
         config = next
@@ -149,6 +163,7 @@ internal class DiscordBotManager(private val c: AppContainer) {
         pause()
         synchronized(this) {
             c.keys.removeLocalSecret(STORE_SLOT)
+            configurationGeneration.incrementAndGet()
             config = config.copy(token = "", botId = null, botName = null, ownerId = null, enabled = false,
                 projectId = null, sessionId = null)
             setupMutable.value = config.toSetupState()
@@ -164,8 +179,12 @@ internal class DiscordBotManager(private val c: AppContainer) {
         DiscordBotService.start(c.appContext)
     }
 
-    suspend fun pause() {
-        synchronized(this) { if (config.enabled) save(config.copy(enabled = false)) }
+    suspend fun pause() = lifecycleMutex.withLock {
+        synchronized(this@DiscordBotManager) { if (config.enabled) save(config.copy(enabled = false)) }
+        stopRuntimeLocked()
+    }
+
+    private suspend fun stopRuntimeLocked() {
         runtimeJob?.cancel()
         runtimeJob?.join()
         runtimeJob = null
@@ -184,7 +203,22 @@ internal class DiscordBotManager(private val c: AppContainer) {
         }
     }
 
-    suspend fun suspendForBackground() = pause()
+    suspend fun suspendForBackground() = lifecycleMutex.withLock {
+        // Preserve enabled=true so the runtime policy can restore the bot when the app is visible again.
+        stopRuntimeLocked()
+    }
+
+    fun updateOptions(prefix: String, aiRepliesEnabled: Boolean, customCommandsEnabled: Boolean) {
+        val cleanPrefix = prefix.trim()
+        require(cleanPrefix in COMMAND_PREFIXES) { "Choose one supported command prefix: !, ?, ~, or ." }
+        synchronized(this) {
+            save(config.copy(
+                commandPrefix = cleanPrefix,
+                aiRepliesEnabled = aiRepliesEnabled,
+                customCommandsEnabled = customCommandsEnabled,
+            ))
+        }
+    }
 
     @Synchronized
     fun startRuntime(owner: Any? = null) {
@@ -266,32 +300,34 @@ internal class DiscordBotManager(private val c: AppContainer) {
         val mention = raw.contains("<@$botId>") || raw.contains("<@!$botId>")
         if (guildMessage && !mention) return
         val text = raw.replace("<@!$botId>", "").replace("<@$botId>", "").trim()
+        val prefix = saved.commandPrefix
         val channelId = event.optString("channel_id").takeIf { it.matches(Regex("[0-9]{17,20}")) }
         val messageId = event.optString("id")
         when {
-            text.equals("!help", ignoreCase = true) || text.equals("/help", ignoreCase = true) ->
-                deliver("Commands: mention me with a question for an AI reply; use !status, !new, or !run <name> [input]. Custom scripts are created in Android Harness Remake settings.", channelId, guildMessage, generation)
-            text.equals("!status", ignoreCase = true) || text.equals("/status", ignoreCase = true) ->
-                deliver("Discord bot is ${if (runtime.value.connected) "connected" else "reconnecting"}. AI replies are plan-only. Replies from server channels are sent privately to your Discord account.", channelId, guildMessage, generation)
-            text.equals("!new", ignoreCase = true) -> {
+            text.equals("${prefix}help", ignoreCase = true) || text.equals("/help", ignoreCase = true) ->
+                deliver("Commands: mention me with a question for an AI reply; use ${prefix}status, ${prefix}new, or ${prefix}run <name> [input]. Custom scripts are created in Android Harness Remake settings.", channelId, guildMessage, generation)
+            text.equals("${prefix}status", ignoreCase = true) || text.equals("/status", ignoreCase = true) ->
+                deliver("Discord bot is ${if (runtime.value.connected) "connected" else "reconnecting"}. AI replies are ${if (saved.aiRepliesEnabled) "on" else "off"}; custom Python commands are ${if (saved.customCommandsEnabled) "on" else "off"}. Server replies are sent privately to your Discord account.", channelId, guildMessage, generation)
+            text.equals("${prefix}new", ignoreCase = true) -> {
                 synchronized(this) {
                     if (generation != configurationGeneration.get()) return
                     save(config.copy(sessionId = null))
                 }
                 deliver("Started a fresh AI conversation. Mention me with a question.", channelId, guildMessage, generation)
             }
-            text.startsWith("!run ", ignoreCase = true) -> {
-                val commandLine = text.drop(5).trim()
+            text.startsWith("${prefix}run ", ignoreCase = true) -> {
+                val commandLine = text.drop(prefix.length + 4).trim()
                 val name = commandLine.substringBefore(' ').lowercase()
                 val input = commandLine.substringAfter(' ', "")
                 runCustomCommand(name, input, generation).also { deliver(it, channelId, guildMessage, generation) }
             }
-            text.startsWith("!") && text.substringBefore(' ').drop(1).lowercase() in saved.customCommands -> {
-                val name = text.substringBefore(' ').drop(1).lowercase()
+            text.startsWith(prefix) && text.substringBefore(' ').drop(prefix.length).lowercase() in saved.customCommands -> {
+                val name = text.substringBefore(' ').drop(prefix.length).lowercase()
                 val input = text.substringAfter(' ', "")
                 runCustomCommand(name, input, generation).also { deliver(it, channelId, guildMessage, generation) }
             }
-            text.isBlank() -> deliver("Mention me with a question, or send !help.", channelId, guildMessage, generation)
+            text.isBlank() -> deliver("Mention me with a question, or send ${prefix}help.", channelId, guildMessage, generation)
+            !saved.aiRepliesEnabled -> deliver("AI replies are disabled in Discord settings. Enable them or use an available command.", channelId, guildMessage, generation)
             else -> deliver(runAi(text, messageId, generation), channelId, guildMessage, generation)
         }
     }
@@ -342,6 +378,7 @@ internal class DiscordBotManager(private val c: AppContainer) {
     private suspend fun runCustomCommand(name: String, input: String, generation: Long): String = withContext(Dispatchers.IO) {
         if (generation != configurationGeneration.get()) return@withContext "The Discord bot setup changed. Please try again."
         val saved = currentConfig().takeIf { it.enabled } ?: return@withContext "The Discord bot is paused."
+        if (!saved.customCommandsEnabled) return@withContext "Custom Python commands are disabled in Discord settings."
         require(name.matches(COMMAND_NAME) && name in saved.customCommands) { "That Python command is not registered in the app." }
         check(c.linuxEnv.isReady) { "Install the app's Linux environment and Python before running custom commands." }
         scriptDirectory.mkdirs()
@@ -406,6 +443,15 @@ internal class DiscordBotManager(private val c: AppContainer) {
         synchronized(this) { save(config.copy(customCommands = (config.customCommands + cleanName).distinct().sorted())) }
     }
 
+    fun loadCustomCommand(name: String): String {
+        val cleanName = name.trim().lowercase()
+        require(cleanName.matches(COMMAND_NAME) && cleanName in currentConfig().customCommands) { "That Python command is not registered in the app." }
+        val base = scriptDirectory.canonicalFile
+        val script = File(base, "$cleanName.py").canonicalFile
+        check(script.parentFile == base && script.isFile) { "The saved Python command is unavailable." }
+        return script.readText(StandardCharsets.UTF_8).take(MAX_SCRIPT_SOURCE)
+    }
+
     fun removeCustomCommand(name: String) {
         val cleanName = name.trim().lowercase()
         require(cleanName.matches(COMMAND_NAME))
@@ -454,6 +500,7 @@ internal class DiscordBotManager(private val c: AppContainer) {
         internal const val DISCORD_MESSAGE_LIMIT = 1_900
         private const val MAX_DISCORD_PARTS = 3
         private val COMMAND_NAME = Regex("[a-z][a-z0-9_]{0,23}")
+        private val COMMAND_PREFIXES = setOf("!", "?", "~", ".")
         private fun shellQuote(value: String) = "'" + value.replace("'", "'\"'\"'") + "'"
 
         private fun readProcessOutput(stream: InputStream, maximum: Int, groupId: CompletableDeferred<Int>): String {
@@ -492,7 +539,7 @@ internal class DiscordRestClient(private val token: String, private val client: 
         val builder = Request.Builder()
             .url("https://discord.com/api/v10$path")
             .header("Authorization", "Bot $token")
-            .header("User-Agent", "AndroidHarnessRemake/1.0.0")
+            .header("User-Agent", "AndroidHarnessRemake/1.0.1")
         if (method == "POST") {
             val body = (json ?: JSONObject()).toString().toRequestBody("application/json; charset=utf-8".toMediaType())
             builder.post(body)

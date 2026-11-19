@@ -43,7 +43,7 @@
     {
       "id": "automation",
       "title": "Schedules & remote work",
-      "description": "Run tasks later, use Telegram, and manage background work."
+      "description": "Run tasks later, connect Telegram or Discord, and manage background work."
     },
     {
       "id": "personal",
@@ -4747,6 +4747,84 @@
         "telegram/TelegramAgentBridge.kt"
       ],
       "keywords": ""
+    },
+    {
+      "id": "discord-bot",
+      "category": "automation",
+      "title": "Connect a Discord bot",
+      "summary": "Connect an owner-controlled bot and configure AI replies and named Python commands.",
+      "location": "Settings > Discord bot.",
+      "before": [
+        "Create a Discord application and bot in the Discord Developer Portal.",
+        "Keep the bot token private and use only a bot account you control."
+      ],
+      "steps": [
+        {
+          "title": "Connect the bot",
+          "body": "Open Settings > Discord bot, enter the bot token and your numeric Discord user ID, then validate and save. The token is stored encrypted on this device."
+        },
+        {
+          "title": "Allow messages",
+          "body": "Enable Message Content Intent in the Developer Portal and grant the bot permission to view and send messages. Start it from the settings page."
+        },
+        {
+          "title": "Choose replies and commands",
+          "body": "Mention the bot in a server or message it privately. Choose a command prefix and turn AI replies or saved Python commands on or off. Replies to server mentions are sent to your private Discord chat."
+        },
+        {
+          "title": "Keep it online",
+          "body": "If app background running is disabled, the bot pauses while the app is hidden and resumes when you return. Open Background settings to allow it to stay online, then review Android battery restrictions."
+        }
+      ],
+      "outcome": "The configured owner can chat with the bot and invoke only locally saved Python command names.",
+      "limits": [
+        "Only the configured owner is accepted. This Discord integration does not reproduce every Telegram control.",
+        "Python scripts run as the app's Linux user and can access resources available to that user. They are not a hard security sandbox, so review and trust a script before saving it.",
+        "Android battery policy can still stop or delay background work."
+      ],
+      "fixes": [
+        {
+          "problem": "The bot connects but ignores messages",
+          "solution": "Check Message Content Intent, view/send permissions, and that the message came from the configured owner."
+        },
+        {
+          "problem": "The bot pauses when the app is hidden",
+          "solution": "Enable Run in background in Settings > Background and review the device's battery restrictions."
+        },
+        {
+          "problem": "A saved Python command does not run",
+          "solution": "Install the app's Linux environment and Python, confirm custom commands are enabled, and use the configured command prefix."
+        }
+      ],
+      "related": [
+        "telegram",
+        "background"
+      ],
+      "actions": [
+        {
+          "kind": "settings",
+          "target": "DISCORD",
+          "label": "Open Discord bot settings"
+        },
+        {
+          "kind": "settings",
+          "target": "BACKGROUND",
+          "label": "Configure background running"
+        }
+      ],
+      "sources": [
+        "telegram/DiscordBotManager.kt",
+        "telegram/DiscordBotService.kt",
+        "ui/settings/BotPlatformsSection.kt",
+        "AppRuntimePolicy.kt"
+      ],
+      "links": [
+        {
+          "label": "Discord Developer Portal",
+          "url": "https://discord.com/developers/applications"
+        }
+      ],
+      "keywords": "discord owner token prefix ai commands python"
     },
     {
       "id": "background",

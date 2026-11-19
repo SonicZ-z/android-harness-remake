@@ -73,7 +73,6 @@ import com.androidharness.app.ui.common.TextButton
         sessions.filter { it.projectId == setup.projectId }.map { TelegramChoiceItem(it.id, it.title.ifBlank { uiContext.getString(R.string.ui_untitled_chat) }) }, models,
         onOpenChat = { setup.sessionId?.let { container.pendingSessionId.tryEmit(it) } },
         onPermissions = { container.pendingSettingsScroll.value = "agent" })
-    BotPlatformsSection(container)
 }
 
 @Composable internal fun TelegramSettingsContent(manager: TelegramManager, projects: List<TelegramChoiceItem>, chats: List<TelegramChoiceItem>,

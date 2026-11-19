@@ -2,9 +2,11 @@ package com.androidharness.app
 
 import android.app.Activity
 import android.app.Application
+import android.content.ComponentCallbacks2
 import android.app.Notification
 import android.app.NotificationManager
 import android.content.Context
+import android.util.Log
 import android.os.Bundle
 import com.androidharness.app.data.SettingsRepository
 import kotlinx.coroutines.*
@@ -17,6 +19,13 @@ internal data class AppRuntimeState(
     val notificationsEnabled: Boolean = false,
 ) {
     val canRun: Boolean get() = ready && (visible || runInBackground)
+}
+
+/** UI-hidden is a lifecycle signal, not a low-memory signal. */
+internal object AppMemoryPolicy {
+    fun shouldReleaseCachedModel(level: Int): Boolean =
+        level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW &&
+            level != ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN
 }
 
 /** Tracks the whole app, including secondary activities, rather than an individual chat. */
@@ -51,6 +60,16 @@ internal class AppRuntimePolicy(private val context: Context, private val settin
 
     suspend fun canRun(): Boolean = settings.settings.first().runInBackground || visible.value
 
+    private suspend fun runCallbackSafely(label: String, callback: suspend () -> Unit) {
+        try {
+            callback()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w("AppRuntimePolicy", "$label failed", e)
+        }
+    }
+
     suspend fun <T> whileAllowed(block: suspend () -> T): T = coroutineScope {
         if (!canRun()) throw BackgroundExecutionDisabled()
         val guard = launch {
@@ -67,11 +86,16 @@ internal class AppRuntimePolicy(private val context: Context, private val settin
             }.distinctUntilChanged().collect { next ->
                 val previous = mutable.value
                 mutable.value = next
-                AppNotifications.applyPreference(context, next.notificationsEnabled)
+                runCatching { AppNotifications.applyPreference(context, next.notificationsEnabled) }
+                    .onFailure { Log.w("AppRuntimePolicy", "Could not apply notification preference", it) }
                 if (!next.canRun) {
-                    withContext(Dispatchers.IO) { onBackgroundDisabled() }
+                    runCallbackSafely("Background cleanup") {
+                        withContext(Dispatchers.IO) { onBackgroundDisabled() }
+                    }
                 } else {
-                    if (!previous.canRun || next.visible && !previous.visible) onAvailable()
+                    if (!previous.canRun || next.visible && !previous.visible) {
+                        runCallbackSafely("Background restore") { onAvailable() }
+                    }
                     if (next.runInBackground && (!previous.runInBackground || !previous.ready)) {
                         runCatching {
                             if (RuntimeNotifier.active.value) AgentService.acquireKeepalive(context)

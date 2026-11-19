@@ -12,6 +12,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -20,17 +21,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.androidharness.app.AppContainer
-import com.androidharness.app.telegram.DiscordBotManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @Composable
-internal fun BotPlatformsSection(container: AppContainer) {
+internal fun DiscordSettingsSection(container: AppContainer, onOpenBackgroundSettings: () -> Unit) {
     val manager = container.discordBots
     val setup by manager.setup.collectAsStateWithLifecycle()
     val runtime by manager.runtime.collectAsStateWithLifecycle()
@@ -38,6 +39,9 @@ internal fun BotPlatformsSection(container: AppContainer) {
     val scope = rememberCoroutineScope()
     var token by remember { mutableStateOf("") }
     var ownerId by remember { mutableStateOf("") }
+    var prefix by remember(setup.commandPrefix) { mutableStateOf(setup.commandPrefix) }
+    var aiRepliesEnabled by remember(setup.aiRepliesEnabled) { mutableStateOf(setup.aiRepliesEnabled) }
+    var customCommandsEnabled by remember(setup.customCommandsEnabled) { mutableStateOf(setup.customCommandsEnabled) }
     var commandName by remember { mutableStateOf("") }
     var commandSource by remember { mutableStateOf("import sys\n\ntext = sys.stdin.read().strip()\nprint(f\"You sent: {text}\")\n") }
     var busy by remember { mutableStateOf(false) }
@@ -63,8 +67,7 @@ internal fun BotPlatformsSection(container: AppContainer) {
         }
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.fillMaxWidth().padding(top = 18.dp)) {
-        Text("More bot platforms", style = MaterialTheme.typography.titleMedium)
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.fillMaxWidth()) {
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
@@ -73,7 +76,7 @@ internal fun BotPlatformsSection(container: AppContainer) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Discord bot", style = MaterialTheme.typography.titleSmall)
                 Text(
-                    "Use a Discord application bot token and your Discord numeric user ID. Only that owner account is accepted. Mention the bot in a server or message it privately for an AI conversation. Server replies are delivered to your private Discord chat.",
+                    "Connect a Discord application bot and allow one Discord user ID to control it. Mention the bot in a server or message it privately for an AI conversation. Server replies are delivered to your private Discord chat.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -133,6 +136,12 @@ internal fun BotPlatformsSection(container: AppContainer) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Text(
+                    "If background running is off, the bot temporarily pauses when you leave the app and resumes when you return. Enable it below to keep the bot online; Android battery restrictions can still affect background activity.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(onClick = onOpenBackgroundSettings) { Text("Open background settings") }
                 (actionError ?: error)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
                 notice?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
             }
@@ -144,9 +153,47 @@ internal fun BotPlatformsSection(container: AppContainer) {
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         ) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Bot options", style = MaterialTheme.typography.titleSmall)
+                OutlinedTextField(
+                    value = prefix,
+                    onValueChange = { prefix = it.take(1) },
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Command prefix") },
+                    supportingText = { Text("Choose one: !, ?, ~, or .") },
+                    singleLine = true,
+                )
+                BotOptionSwitch(
+                    title = "AI conversations",
+                    description = "Allow owner messages or bot mentions to start a Plan-mode AI reply.",
+                    checked = aiRepliesEnabled,
+                    enabled = !busy,
+                    onCheckedChange = { aiRepliesEnabled = it },
+                )
+                BotOptionSwitch(
+                    title = "Custom Python commands",
+                    description = "Allow the saved named scripts below to run from Discord.",
+                    checked = customCommandsEnabled,
+                    enabled = !busy,
+                    onCheckedChange = { customCommandsEnabled = it },
+                )
+                Button(enabled = !busy, onClick = {
+                    runAction("Bot options saved.") {
+                        manager.updateOptions(prefix, aiRepliesEnabled, customCommandsEnabled)
+                    }
+                }) { Text("Save bot options") }
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        ) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Custom Python commands", style = MaterialTheme.typography.titleSmall)
                 Text(
-                    "Add named scripts here, then run them with !run <name> [input]. Messages cannot supply shell commands or Python code. Scripts run in the app's own Linux user environment with a 15 second limit. Only add code you trust; a script can access app-private files available to that user.",
+                    "Create named scripts here, then run them with ${setup.commandPrefix}run <name> [input], or call a saved script with ${setup.commandPrefix}<name> [input]. Chat messages cannot supply shell commands or Python code. Each named script has a 15 second limit and bounded reply output. Scripts run as the app's Linux user, so only add code you trust; it can access files and services available to that user.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -167,25 +214,41 @@ internal fun BotPlatformsSection(container: AppContainer) {
                     minLines = 6,
                     maxLines = 12,
                 )
-                Button(
-                    enabled = !busy && commandName.isNotBlank() && commandSource.isNotBlank(),
-                    onClick = {
-                        runAction("Python command saved.") {
-                            manager.saveCustomCommand(commandName, commandSource)
-                            commandName = ""
-                        }
-                    },
-                ) { Text("Save command") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        enabled = !busy && commandName.isNotBlank() && commandSource.isNotBlank(),
+                        onClick = {
+                            runAction("Python command saved.") {
+                                manager.saveCustomCommand(commandName, commandSource)
+                                commandName = ""
+                            }
+                        },
+                    ) { Text("Save command") }
+                    if (commandName.isNotBlank()) {
+                        TextButton(enabled = !busy, onClick = { commandName = "" }) { Text("Clear editor") }
+                    }
+                }
                 setup.customCommands.forEach { name ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("!run $name [input]", modifier = Modifier.padding(vertical = 8.dp), style = MaterialTheme.typography.bodyMedium)
-                        TextButton(enabled = !busy, onClick = { runAction("Command removed.") { manager.removeCustomCommand(name) } }) {
-                            Text("Remove")
+                    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                        Text("${setup.commandPrefix}$name [input]", style = MaterialTheme.typography.bodyMedium)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(enabled = !busy, onClick = {
+                                runAction("Command loaded for editing.") {
+                                    commandName = name
+                                    commandSource = manager.loadCustomCommand(name)
+                                }
+                            }) { Text("Edit") }
+                            TextButton(enabled = !busy, onClick = {
+                                runAction("Command removed.") {
+                                    manager.removeCustomCommand(name)
+                                    if (commandName == name) commandName = ""
+                                }
+                            }) { Text("Remove") }
                         }
                     }
                 }
                 Text(
-                    "This is an allowlist of locally authored scripts, not a remote shell. Python is available only after the app's Linux environment is installed.",
+                    "The command list is an allowlist, not a remote shell. Python is available only after the app's Linux environment is installed. Disable custom commands above to stop all Discord-triggered script runs.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -206,5 +269,26 @@ internal fun BotPlatformsSection(container: AppContainer) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun BotOptionSwitch(
+    title: String,
+    description: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium)
+            Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, enabled = enabled, onCheckedChange = onCheckedChange)
     }
 }
