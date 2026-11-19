@@ -114,7 +114,7 @@ fun SetupScreen(
     val envDone = envState is EnvState.Ready
     val completed = listOf(storageGranted, notifGranted, shizukuDone, envDone, batteryExempt).count { it }
 
-    Scaffold(containerColor = scheme.surface) { padding ->
+    Scaffold(containerColor = androidx.compose.ui.graphics.Color.Transparent) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()

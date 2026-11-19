@@ -19,6 +19,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.background
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -629,7 +630,7 @@ fun AppNav(container: AppContainer) {
             }
         },
     ) {
-        Row(Modifier.fillMaxSize().focusRequester(desktopFocus).onPreviewKeyEvent { event ->
+        Row(Modifier.fillMaxSize().background(auroraBackdropBrush()).focusRequester(desktopFocus).onPreviewKeyEvent { event ->
             if (desktopNavigation && desktopKeyboard.handler?.invoke(event) == true) true
             else if (!desktopNavigation || !event.isCtrlPressed) false
             else when (event.key) {

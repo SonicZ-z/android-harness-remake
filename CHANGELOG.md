@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.0.2 - 2026-11-19
+
+### Added
+
+- Bot-specific OpenAI-compatible Chat Completions settings for an encrypted API key, base URL, and model, separate from the app's normal AI provider.
+- Up to 10 recent Discord conversation messages stored with the encrypted bot configuration. The `!new` command clears the conversation.
+- Endpoint validation that requires HTTPS for remote services, permits plain HTTP only for localhost or emulator loopback, rejects URL credentials/query strings, and does not follow redirects.
+- Unit tests for legacy config defaults, secret redaction, endpoint validation, and owner/tag message routing.
+- Palette-aware gradient panels, a shared aurora shell background, and retuned central motion timings.
+
+### Changed
+
+- Replace the app-shared Plan-mode AI bridge with the configured bot-specific endpoint. Owner direct messages can start a conversation; server conversations require an owner message tagging the bot. Replies to server messages remain private to the owner.
+- Replace the custom Python list wording with a Command Manager that clearly adds, edits, and deletes saved named commands. Execution remains limited to locally saved scripts with time and output bounds.
+- Remove the unused bot-platform placeholder card from the Discord settings page.
+- Update README and privacy text for encrypted bot AI settings, conversation data flow, endpoint constraints, and command management.
+- Bump the app to version 1.0.2 with version code 3. The source ZIP and test-signed APK are published in the public v1.0.2 release.
+
 ## 1.0.1 - 2026-11-19 (prepared, not released)
 
 ### Fixed
@@ -19,7 +37,7 @@
 
 ### Changed
 
-- Bump the prepared app version to 1.0.1 with version code 2. No APK release is published.
+- Bump the prepared app version to 1.0.1 with version code 2. No APK release was published.
 - Keep custom Python execution restricted to locally saved command names, with time and output limits. Scripts execute as the app's Linux user and may access resources available to that user.
 
 ## 1.0.0 - 2026-11-19
@@ -33,7 +51,7 @@
 - Configuration-generation checks and cancellation prevent an in-flight reply from crossing to a newly configured owner.
 - Gateway shutdown cleanup and heartbeat acknowledgement monitoring trigger reconnects when the connection stops responding.
 - Timed Python commands have bounded output and process-group cleanup so spawned children are stopped on completion or timeout.
-- WeChat status card explaining why a public callback service is required for an official integration.
+- Informational bot-platform card explaining why a public callback service is required for one unsupported integration.
 
 ### Changed
 

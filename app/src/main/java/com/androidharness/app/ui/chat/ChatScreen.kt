@@ -1520,7 +1520,7 @@ private fun ChatScreenContent(
         },
     ) {
     Scaffold(
-        containerColor = if (com.androidharness.app.ui.theme.LocalHarnessCanvasVisible.current) androidx.compose.ui.graphics.Color.Transparent else MaterialTheme.colorScheme.surface,
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onSurface,
         topBar = {
             val currentProvider = state.activeProvider
@@ -1694,8 +1694,8 @@ private fun ChatScreenContent(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(if (floatingGlass) PaddingValues(bottom = padding.calculateBottomPadding()) else padding)
-                .background(if (com.androidharness.app.ui.theme.LocalHarnessCanvasVisible.current) androidx.compose.ui.graphics.Color.Transparent else MaterialTheme.colorScheme.surface),
-            contentAlignment = Alignment.TopCenter,
+                .background(androidx.compose.ui.graphics.Color.Transparent),
+                contentAlignment = Alignment.TopCenter,
         ) {
             Column(
                 modifier = Modifier

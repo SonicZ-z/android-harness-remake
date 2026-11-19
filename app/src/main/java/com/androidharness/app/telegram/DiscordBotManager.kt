@@ -53,8 +53,12 @@ internal data class DiscordBotConfig(
     val commandPrefix: String = "!",
     val aiRepliesEnabled: Boolean = true,
     val customCommandsEnabled: Boolean = true,
+    val aiApiKey: String = "",
+    val aiBaseUrl: String = DiscordAiEndpointValidator.DEFAULT_BASE_URL,
+    val aiModel: String = DiscordAiEndpointValidator.DEFAULT_MODEL,
+    val aiConversation: List<DiscordAiTurn> = emptyList(),
 ) {
-    override fun toString() = "DiscordBotConfig(botId=$botId, ownerId=$ownerId, enabled=$enabled, token=[redacted])"
+    override fun toString() = "DiscordBotConfig(botId=$botId, ownerId=$ownerId, enabled=$enabled, token=[redacted], aiApiKey=[redacted])"
 }
 
 internal data class DiscordBotSetupState(
@@ -66,6 +70,9 @@ internal data class DiscordBotSetupState(
     val commandPrefix: String = "!",
     val aiRepliesEnabled: Boolean = true,
     val customCommandsEnabled: Boolean = true,
+    val aiBaseUrl: String = DiscordAiEndpointValidator.DEFAULT_BASE_URL,
+    val aiModel: String = DiscordAiEndpointValidator.DEFAULT_MODEL,
+    val aiApiKeyConfigured: Boolean = false,
 )
 
 internal data class DiscordBotRuntimeState(
@@ -83,7 +90,7 @@ internal class DiscordBotManager(private val c: AppContainer) {
     private val dispatchJobsLock = Any()
     private val dispatchJobs = mutableSetOf<Job>()
     private val configurationGeneration = AtomicLong(0)
-    private val bridge = AndroidTelegramAgentBridge(c)
+    private val aiClient = DiscordAiClient()
     private val http = OkHttpClient.Builder()
         .callTimeout(java.time.Duration.ofSeconds(20))
         .build()
@@ -110,6 +117,9 @@ internal class DiscordBotManager(private val c: AppContainer) {
         commandPrefix = commandPrefix,
         aiRepliesEnabled = aiRepliesEnabled,
         customCommandsEnabled = customCommandsEnabled,
+        aiBaseUrl = aiBaseUrl,
+        aiModel = aiModel,
+        aiApiKeyConfigured = aiApiKey.isNotBlank(),
     )
 
     @Synchronized
@@ -122,7 +132,8 @@ internal class DiscordBotManager(private val c: AppContainer) {
         if (previous.token != next.token || previous.botId != next.botId || previous.ownerId != next.ownerId ||
             previous.enabled != next.enabled || previous.commandPrefix != next.commandPrefix ||
             previous.aiRepliesEnabled != next.aiRepliesEnabled || previous.customCommandsEnabled != next.customCommandsEnabled ||
-            previous.customCommands != next.customCommands
+            previous.customCommands != next.customCommands || previous.aiApiKey != next.aiApiKey ||
+            previous.aiBaseUrl != next.aiBaseUrl || previous.aiModel != next.aiModel
         ) {
             configurationGeneration.incrementAndGet()
         }
@@ -154,6 +165,7 @@ internal class DiscordBotManager(private val c: AppContainer) {
                 enabled = false,
                 projectId = if (ownerChanged) null else config.projectId,
                 sessionId = if (ownerChanged) null else config.sessionId,
+                aiConversation = if (ownerChanged) emptyList() else config.aiConversation,
             ))
             errorMutable.value = null
         }
@@ -165,7 +177,7 @@ internal class DiscordBotManager(private val c: AppContainer) {
             c.keys.removeLocalSecret(STORE_SLOT)
             configurationGeneration.incrementAndGet()
             config = config.copy(token = "", botId = null, botName = null, ownerId = null, enabled = false,
-                projectId = null, sessionId = null)
+                projectId = null, sessionId = null, aiApiKey = "", aiConversation = emptyList())
             setupMutable.value = config.toSetupState()
         }
     }
@@ -220,6 +232,33 @@ internal class DiscordBotManager(private val c: AppContainer) {
         }
     }
 
+    fun updateAiSettings(baseUrl: String, model: String, apiKey: String) {
+        val endpoint = DiscordAiEndpointValidator.validate(baseUrl, model)
+        val enteredKey = apiKey.trim()
+        require(enteredKey.isEmpty() || (enteredKey.length in 8..2048 && enteredKey.none(Char::isWhitespace))) {
+            "The AI API key must be 8 to 2048 characters without spaces or line breaks."
+        }
+        synchronized(this) {
+            val current = config
+            val nextKey = enteredKey.ifBlank { current.aiApiKey }
+            val changed = current.aiBaseUrl != endpoint.baseUrl || current.aiModel != endpoint.model || current.aiApiKey != nextKey
+            save(current.copy(
+                aiBaseUrl = endpoint.baseUrl,
+                aiModel = endpoint.model,
+                aiApiKey = nextKey,
+                aiConversation = if (changed) emptyList() else current.aiConversation,
+            ))
+        }
+    }
+
+    fun clearAiApiKey() {
+        synchronized(this) {
+            if (config.aiApiKey.isNotEmpty() || config.aiConversation.isNotEmpty()) {
+                save(config.copy(aiApiKey = "", aiConversation = emptyList()))
+            }
+        }
+    }
+
     @Synchronized
     fun startRuntime(owner: Any? = null) {
         runtimeOwner = owner
@@ -231,7 +270,7 @@ internal class DiscordBotManager(private val c: AppContainer) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                errorMutable.value = SecretRedactor.redact(e.message ?: "Discord bot stopped. Check the connection and retry.")
+                errorMutable.value = safeText(e.message ?: "Discord bot stopped. Check the connection and retry.")
                 synchronized(this@DiscordBotManager) {
                     if (config.enabled) save(config.copy(enabled = false))
                 }
@@ -269,7 +308,7 @@ internal class DiscordBotManager(private val c: AppContainer) {
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        errorMutable.value = SecretRedactor.redact(e.message ?: "Could not handle the Discord message.")
+                        errorMutable.value = safeText(e.message ?: "Could not handle the Discord message.")
                     }
                 }
             } finally {
@@ -292,26 +331,29 @@ internal class DiscordBotManager(private val c: AppContainer) {
         if (generation != configurationGeneration.get()) return
         val saved = currentConfig().takeIf { it.enabled } ?: return
         val author = event.optJSONObject("author") ?: return
-        if (author.optBoolean("bot") || author.optString("id") != saved.ownerId) return
         val botId = saved.botId ?: return
         val raw = event.optString("content").trim()
         if (raw.isBlank()) return
         val guildMessage = !event.isNull("guild_id") && event.has("guild_id")
-        val mention = raw.contains("<@$botId>") || raw.contains("<@!$botId>")
-        if (guildMessage && !mention) return
-        val text = raw.replace("<@!$botId>", "").replace("<@$botId>", "").trim()
+        val mention = DiscordMessagePolicy.mentionsBot(raw, botId)
+        if (!DiscordMessagePolicy.shouldProcess(
+                isOwner = author.optString("id") == saved.ownerId,
+                isBotAuthor = author.optBoolean("bot"),
+                isGuildMessage = guildMessage,
+                botMentioned = mention,
+            )) return
+        val text = DiscordMessagePolicy.stripBotMention(raw, botId).trim()
         val prefix = saved.commandPrefix
         val channelId = event.optString("channel_id").takeIf { it.matches(Regex("[0-9]{17,20}")) }
-        val messageId = event.optString("id")
         when {
             text.equals("${prefix}help", ignoreCase = true) || text.equals("/help", ignoreCase = true) ->
-                deliver("Commands: mention me with a question for an AI reply; use ${prefix}status, ${prefix}new, or ${prefix}run <name> [input]. Custom scripts are created in Android Harness Remake settings.", channelId, guildMessage, generation)
+                deliver("Commands: mention me with a question for an AI reply; use ${prefix}status, ${prefix}new, or ${prefix}run <name> [input]. Custom scripts are managed in Discord settings.", channelId, guildMessage, generation)
             text.equals("${prefix}status", ignoreCase = true) || text.equals("/status", ignoreCase = true) ->
                 deliver("Discord bot is ${if (runtime.value.connected) "connected" else "reconnecting"}. AI replies are ${if (saved.aiRepliesEnabled) "on" else "off"}; custom Python commands are ${if (saved.customCommandsEnabled) "on" else "off"}. Server replies are sent privately to your Discord account.", channelId, guildMessage, generation)
             text.equals("${prefix}new", ignoreCase = true) -> {
                 synchronized(this) {
                     if (generation != configurationGeneration.get()) return
-                    save(config.copy(sessionId = null))
+                    save(config.copy(sessionId = null, aiConversation = emptyList()))
                 }
                 deliver("Started a fresh AI conversation. Mention me with a question.", channelId, guildMessage, generation)
             }
@@ -328,51 +370,34 @@ internal class DiscordBotManager(private val c: AppContainer) {
             }
             text.isBlank() -> deliver("Mention me with a question, or send ${prefix}help.", channelId, guildMessage, generation)
             !saved.aiRepliesEnabled -> deliver("AI replies are disabled in Discord settings. Enable them or use an available command.", channelId, guildMessage, generation)
-            else -> deliver(runAi(text, messageId, generation), channelId, guildMessage, generation)
+            else -> deliver(runAi(text, generation), channelId, guildMessage, generation)
         }
     }
 
-    private suspend fun runAi(prompt: String, discordMessageId: String, generation: Long): String {
+    private suspend fun runAi(prompt: String, generation: Long): String {
         if (generation != configurationGeneration.get()) return "The Discord bot setup changed. Please try again."
         val saved = currentConfig().takeIf { it.enabled } ?: return "The Discord bot is paused."
-        val projectId = saved.projectId ?: c.workspace.currentProjectOnce().id
-        var sessionId = saved.sessionId
-        if (sessionId == null) {
-            sessionId = bridge.newChat(projectId, "Discord AI chat")
+        if (saved.aiApiKey.isBlank()) return "Set an AI API key, base URL, and model in Discord settings before starting an AI conversation."
+        val history = saved.aiConversation
+            .filter { it.role == "user" || it.role == "assistant" }
+            .takeLast(MAX_AI_HISTORY_MESSAGES - 1) + DiscordAiTurn("user", prompt.take(MAX_AI_TURN_CHARS))
+        return try {
+            val answer = withTimeout(AI_TIMEOUT_MS) {
+                aiClient.complete(saved.aiBaseUrl, saved.aiModel, saved.aiApiKey, history)
+            }
             if (generation != configurationGeneration.get()) return "The Discord bot setup changed. Please try again."
             synchronized(this) {
                 if (generation != configurationGeneration.get()) return "The Discord bot setup changed. Please try again."
-                save(config.copy(projectId = projectId, sessionId = sessionId))
+                save(config.copy(aiConversation = (history + DiscordAiTurn("assistant", answer)).takeLast(MAX_AI_HISTORY_MESSAGES)))
             }
+            safeText(answer)
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            "The AI request timed out. Check the configured endpoint and try again."
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            safeText(e.message ?: "The AI request failed. Check the configured endpoint and try again.")
         }
-        if (generation != configurationGeneration.get()) return "The Discord bot setup changed. Please try again."
-        if (bridge.isBusy(sessionId)) return "The linked AI chat is busy or paused. Open the app to finish or stop that task, then try again."
-        val target = bridge.target(projectId, sessionId, "PLAN")
-        val requestId = discordMessageId.toLongOrNull()?.takeIf { it > 0 } ?: System.currentTimeMillis()
-        val request = TelegramRequest(
-            id = requestId,
-            text = prompt.take(8_000),
-            receivedAt = System.currentTimeMillis(),
-            status = TelegramRequestStatus.RUNNING,
-            sessionId = target.sessionId,
-            projectId = target.projectId,
-            providerId = target.providerId,
-            model = target.model,
-            mode = "PLAN",
-        )
-        val binding = "discord-${saved.botId}-${saved.ownerId}"
-        if (generation != configurationGeneration.get()) return "The Discord bot setup changed. Please try again."
-        bridge.start(request, binding)
-        val deadline = System.currentTimeMillis() + AI_TIMEOUT_MS
-        while (System.currentTimeMillis() < deadline) {
-            if (generation != configurationGeneration.get()) throw CancellationException("Discord bot configuration changed")
-            val snapshot = bridge.snapshot(request, binding)
-            if (snapshot.completed) return safeText(snapshot.output.ifBlank { "The AI finished without a text response." })
-            if (snapshot.cancelled) return "The AI conversation was stopped in the app."
-            if (!snapshot.running && snapshot.started && snapshot.error != null) return safeText(snapshot.error)
-            delay(500)
-        }
-        return "The AI is still working. Check the conversation in Android Harness Remake before sending another prompt."
     }
 
     private suspend fun runCustomCommand(name: String, input: String, generation: Long): String = withContext(Dispatchers.IO) {
@@ -475,8 +500,10 @@ internal class DiscordBotManager(private val c: AppContainer) {
     }
 
     private fun safeText(text: String): String {
-        val token = currentConfig().token
-        return SecretRedactor.redact(if (token.isBlank()) text else text.replace(token, "[redacted]"))
+        val saved = currentConfig()
+        val redacted = listOf(saved.token, saved.aiApiKey).filter(String::isNotBlank)
+            .fold(text) { value, secret -> value.replace(secret, "[redacted]") }
+        return SecretRedactor.redact(redacted)
     }
 
     internal fun gatewayToken(): String? = currentConfig().takeIf { it.enabled }?.token
@@ -495,7 +522,9 @@ internal class DiscordBotManager(private val c: AppContainer) {
         private const val MAX_SCRIPT_INPUT = 2_000
         private const val MAX_SCRIPT_OUTPUT = 4_000
         private const val SCRIPT_TIMEOUT_SECONDS = 15L
-        private const val AI_TIMEOUT_MS = 120_000L
+        private const val AI_TIMEOUT_MS = 95_000L
+        private const val MAX_AI_HISTORY_MESSAGES = 10
+        private const val MAX_AI_TURN_CHARS = 8_000
         private const val MAX_DISPATCH_JOBS = 4
         internal const val DISCORD_MESSAGE_LIMIT = 1_900
         private const val MAX_DISCORD_PARTS = 3

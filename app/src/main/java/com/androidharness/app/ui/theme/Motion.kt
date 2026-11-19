@@ -18,22 +18,22 @@ import androidx.compose.material3.MotionScheme
  * through these, so retuning here changes the whole app's feel at once.
  */
 fun <T> defaultSpatialSpec(): FiniteAnimationSpec<T> =
-    spring(dampingRatio = 0.86f, stiffness = 700f)
+    spring(dampingRatio = 0.84f, stiffness = 520f)
 
 fun <T> fastSpatialSpec(): FiniteAnimationSpec<T> =
-    spring(dampingRatio = 0.9f, stiffness = 1100f)
+    spring(dampingRatio = 0.9f, stiffness = 900f)
 
 fun <T> slowSpatialSpec(): FiniteAnimationSpec<T> =
-    spring(dampingRatio = 0.9f, stiffness = 380f)
+    spring(dampingRatio = 0.9f, stiffness = 320f)
 
 fun <T> defaultEffectsSpec(): FiniteAnimationSpec<T> =
-    tween(durationMillis = 220, easing = FastOutSlowInEasing)
+    tween(durationMillis = 270, easing = FastOutSlowInEasing)
 
 fun <T> fastEffectsSpec(): FiniteAnimationSpec<T> =
-    tween(durationMillis = 150, easing = FastOutSlowInEasing)
+    tween(durationMillis = 180, easing = FastOutSlowInEasing)
 
 fun <T> slowEffectsSpec(): FiniteAnimationSpec<T> =
-    tween(durationMillis = 350, easing = FastOutSlowInEasing)
+    tween(durationMillis = 420, easing = FastOutSlowInEasing)
 
 // Opt in per control; changing the app-wide scheme would also retime unrelated screens.
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)

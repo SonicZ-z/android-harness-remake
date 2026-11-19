@@ -346,7 +346,7 @@ private fun SettingsScreenContent(
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             AppHeader(
                 title = if (desktop) stringResource(R.string.settings_page_title) else customSection?.name ?: page?.let { stringResource(it.title) }
